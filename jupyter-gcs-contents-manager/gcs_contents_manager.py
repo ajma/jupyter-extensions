@@ -167,8 +167,9 @@ class GCSBasedFileManager:
             # so we treat the regular file as overriding the logical
             # directory.
             return False
-        dir_contents = self._list_blobs(path)
-        for _ in dir_contents:
+        prefix = self._gcs_path(path)
+        blobs = self.bucket.list_blobs(prefix=prefix, max_results=1)
+        for _ in blobs:
             return True
         return False
 
