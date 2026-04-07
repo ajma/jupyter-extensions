@@ -106,9 +106,27 @@ def cached_gcloud_subcommand(subcmd):
     return run_gcloud_subcommand(subcmd)
 
 
+_parsed_config_cache = cachetools.TTLCache(maxsize=4, ttl=(20 * 60))
+_parsed_config_lock = threading.Lock()
+
+
+def _get_cached_parsed_config(subcommand):
+    """Return the parsed JSON config, caching the parsed dict to avoid re-parsing."""
+    with _parsed_config_lock:
+        if subcommand in _parsed_config_cache:
+            return _parsed_config_cache[subcommand]
+    raw = cached_gcloud_subcommand(subcommand)
+    parsed = json.loads(raw)
+    with _parsed_config_lock:
+        _parsed_config_cache[subcommand] = parsed
+    return parsed
+
+
 def clear_gcloud_cache():
     """Clear the TTL cache used to cache gcloud subcommand results."""
     cached_gcloud_subcommand.cache_clear()
+    with _parsed_config_lock:
+        _parsed_config_cache.clear()
 
 
 def _get_config_field(config, field):
@@ -142,8 +160,7 @@ def get_gcloud_config(field):
         dictionary containing a field named `project` with a string value.
     """
     subcommand = "config config-helper --min-expiry=30m --format=json"
-    cached_config_str = cached_gcloud_subcommand(subcommand)
-    cached_config = json.loads(cached_config_str)
+    cached_config = _get_cached_parsed_config(subcommand)
     return _get_config_field(cached_config, field)
 
 
@@ -166,16 +183,16 @@ async def async_get_gcloud_config(field):
         containing a field named `project` with a string value.
     """
     subcommand = "config config-helper --min-expiry=30m --format=json"
-    with cached_gcloud_subcommand.cache_lock:
-        if subcommand in cached_gcloud_subcommand.cache:
-            cached_config_str = cached_gcloud_subcommand.cache[subcommand]
-            cached_config = json.loads(cached_config_str)
-            return _get_config_field(cached_config, field)
+    with _parsed_config_lock:
+        if subcommand in _parsed_config_cache:
+            return _get_config_field(_parsed_config_cache[subcommand], field)
 
     out = await async_run_gcloud_subcommand(subcommand)
+    config = json.loads(out)
+    with _parsed_config_lock:
+        _parsed_config_cache[subcommand] = config
     with cached_gcloud_subcommand.cache_lock:
         cached_gcloud_subcommand.cache[subcommand] = out
-    config = json.loads(out)
     return _get_config_field(config, field)
 
 
