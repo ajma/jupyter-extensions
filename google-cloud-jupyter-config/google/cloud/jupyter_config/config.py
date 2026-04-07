@@ -147,11 +147,17 @@ def get_gcloud_config(field):
     return _get_config_field(cached_config, field)
 
 
+_async_config_lock = asyncio.Lock()
+
+
 async def async_get_gcloud_config(field):
     """Async helper method that invokes the gcloud config helper.
 
     This is like `get_gcloud_config` but does not block on the underlying
     gcloud invocation when there is a cache miss.
+
+    Uses an asyncio.Lock to prevent cache stampede: when the cache expires,
+    only one coroutine runs gcloud while others wait for the result.
 
     Args:
         field: A period-separated search path for the config value to return.
@@ -166,17 +172,29 @@ async def async_get_gcloud_config(field):
         containing a field named `project` with a string value.
     """
     subcommand = "config config-helper --min-expiry=30m --format=json"
+
+    # Fast path: check cache without the async lock.
     with cached_gcloud_subcommand.cache_lock:
         if subcommand in cached_gcloud_subcommand.cache:
             cached_config_str = cached_gcloud_subcommand.cache[subcommand]
             cached_config = json.loads(cached_config_str)
             return _get_config_field(cached_config, field)
 
-    out = await async_run_gcloud_subcommand(subcommand)
-    with cached_gcloud_subcommand.cache_lock:
-        cached_gcloud_subcommand.cache[subcommand] = out
-    config = json.loads(out)
-    return _get_config_field(config, field)
+    # Slow path: serialize cache misses to prevent multiple concurrent
+    # gcloud subprocess invocations.
+    async with _async_config_lock:
+        # Re-check cache; another coroutine may have populated it.
+        with cached_gcloud_subcommand.cache_lock:
+            if subcommand in cached_gcloud_subcommand.cache:
+                cached_config_str = cached_gcloud_subcommand.cache[subcommand]
+                cached_config = json.loads(cached_config_str)
+                return _get_config_field(cached_config, field)
+
+        out = await async_run_gcloud_subcommand(subcommand)
+        with cached_gcloud_subcommand.cache_lock:
+            cached_gcloud_subcommand.cache[subcommand] = out
+        config = json.loads(out)
+        return _get_config_field(config, field)
 
 
 def gcp_account():
