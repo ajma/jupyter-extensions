@@ -209,9 +209,10 @@ class GCSBasedFileManager:
             blob.delete()
 
         # The path (possibly) corresponds to a directory. Delete
-        # every file underneath it.
-        for blob in self._list_blobs(path):
-            blob.delete()
+        # every file underneath it using batch deletion.
+        child_blobs = list(self._list_blobs(path))
+        if child_blobs:
+            self.bucket.delete_blobs(child_blobs)
         return None
 
     def rename_file(self, old_path, new_path):
