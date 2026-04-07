@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
+
 from jupyter_client.kernelspec import KernelSpecManager
 from jupyter_core.utils import ensure_async
 from jupyter_server.gateway.managers import GatewayKernelSpecManager
 
 from traitlets import Type, Unicode, default
+
+_SPECS_CACHE_TTL = 30  # seconds
 
 
 def append_display_name(spec, suffix):
@@ -64,6 +68,8 @@ class MixingKernelSpecManager(KernelSpecManager):
         self.remote_manager= GatewayKernelSpecManager(*args, **kwargs)
         self._local_kernels = set()
         self._remote_kernels = set()
+        self._specs_cache = None
+        self._specs_cache_time = 0
 
     def is_remote(self, kernel_name):
         return kernel_name in self._remote_kernels
@@ -94,6 +100,10 @@ class MixingKernelSpecManager(KernelSpecManager):
         Returns:
           A map from kernel names (str) to kernelspecs.
         """
+        if (self._specs_cache is not None
+                and (time.monotonic() - self._specs_cache_time) < _SPECS_CACHE_TTL):
+            return self._specs_cache
+
         ks = self.local_manager.get_all_specs()
         for name, kernelspec in ks.items():
             spec = kernelspec.get("spec", {})
@@ -107,12 +117,14 @@ class MixingKernelSpecManager(KernelSpecManager):
                     append_display_name(spec, self.remote_display_name_suffix)
                     ks[name] = kernelspec
                     self._remote_kernels = self._remote_kernels | {name}
-                    
+
         except Exception as ex:
             self.log.exception('Failure listing remote kernelspecs: %s', ex)
             # Otherwise ignore the exception, so that local kernels are still usable.
         self.log.debug(f'Found {len(self._local_kernels)} local kernels: {self._local_kernels}')
         self.log.debug(f'Found {len(self._remote_kernels)} remote kernels: {self._remote_kernels}')
+        self._specs_cache = ks
+        self._specs_cache_time = time.monotonic()
         return ks
 
     async def get_original_kernel_spec(self, kernel_name, *args, **kwargs):
