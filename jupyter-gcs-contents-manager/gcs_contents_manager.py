@@ -295,13 +295,17 @@ class GCSBasedFileManager:
         return dir_obj
 
     def get_file(self, path, type, include_content, require_hash):
-        if not type and self.dir_exists(path):
-            type = "directory"
         if type == "directory":
             return self.list_dir(path, include_content)
 
         blob = self._blob(path)
         if not blob:
+            if type:
+                # Explicit non-directory type requested but blob not found.
+                return None
+            # No type specified and no blob found; try as directory.
+            if self.dir_exists(path):
+                return self.list_dir(path, include_content)
             return None
 
         file_model = self._file_metadata(path, blob)
