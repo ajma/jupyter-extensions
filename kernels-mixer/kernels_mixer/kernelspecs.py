@@ -94,6 +94,9 @@ class MixingKernelSpecManager(KernelSpecManager):
         Returns:
           A map from kernel names (str) to kernelspecs.
         """
+        self._local_kernels = set()
+        self._remote_kernels = set()
+
         ks = self.local_manager.get_all_specs()
         for name, kernelspec in ks.items():
             spec = kernelspec.get("spec", {})
