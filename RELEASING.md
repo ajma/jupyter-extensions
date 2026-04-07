@@ -19,13 +19,6 @@ This repository uses a GitHub Actions workflow to automatically publish packages
    git push origin google-cloud-jupyter-config-v0.0.13
    ```
 
-   More examples:
-
-   ```bash
-   git tag kernels-mixer-v0.0.16
-   git tag jupyter-gcs-contents-manager-v0.0.2
-   ```
-
 The workflow will automatically build and publish the corresponding package to PyPI.
 
 ## Prerequisites
