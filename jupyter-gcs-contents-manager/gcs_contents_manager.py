@@ -221,9 +221,16 @@ class GCSBasedFileManager:
             return None
 
         # The path (possibly) corresponds to a directory. Rename
-        # every file underneath it.
-        for b in self._list_blobs(old_path):
-            self.bucket.rename_blob(b, b.name.replace(old_path, new_path))
+        # every file underneath it in parallel using the thread pool.
+        gcs_old_prefix = self._gcs_path(old_path)
+        gcs_new_prefix = self._gcs_path(new_path)
+
+        def _rename_blob(b):
+            new_name = gcs_new_prefix + b.name[len(gcs_old_prefix):]
+            self.bucket.rename_blob(b, new_name)
+
+        blobs = list(self._list_blobs(old_path))
+        list(_executor_.map(_rename_blob, blobs))
         return None
 
     def _file_metadata(self, path, blob):
