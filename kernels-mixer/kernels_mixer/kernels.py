@@ -16,7 +16,7 @@ import copy
 
 from jupyter_client.kernelspec import KernelSpecManager
 from jupyter_client.manager import in_pending_state
-from jupyter_core.utils import ensure_async, run_sync
+from jupyter_core.utils import ensure_async
 from jupyter_server.gateway.managers import GatewayMappingKernelManager
 from jupyter_server.services.kernels.kernelmanager import AsyncMappingKernelManager
 from jupyter_server.services.kernels.kernelmanager import ServerKernelManager
@@ -81,23 +81,10 @@ class MixingMappingKernelManager(AsyncMappingKernelManager):
                 # Ignore the exception listing remote kernels, so that local kernels are still usable.
         return super().list_kernels()
 
-    def kernel_model(self, kernel_id):
+    async def kernel_model(self, kernel_id):
         self._check_kernel_id(kernel_id)
         kernel = self._kernels[kernel_id]
-        # Normally, calls to `run_sync` pose a danger of locking up Tornado's
-        # single-threaded event loop.
-        #
-        # However, the call below should be fine because it cannot block for an
-        # arbitrary amount of time.
-        #
-        # This call blocks on the `model` method defined below, which in turn
-        # blocks on the `GatewayMappingKernelManager`'s `kernel_model` method
-        # (https://github.com/jupyter-server/jupyter_server/blob/547f7a244d89f79dd09fa7d382322d1c40890a3f/jupyter_server/gateway/managers.py#L94).
-        #
-        # That will only take a small, deterministic amount of time to complete
-        # because that `kernel_model` only operates on existing, in-memory data
-        # and does not block on any outgoing network requests.
-        return run_sync(kernel.model)()
+        return await kernel.model()
 
 class MixingKernelManager(ServerKernelManager):
     _kernel_id_map = {}
