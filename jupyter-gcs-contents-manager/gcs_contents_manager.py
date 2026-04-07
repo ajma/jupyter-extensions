@@ -138,9 +138,9 @@ class GCSBasedFileManager:
         # The last chunk is -1, which lexicographically comes first; move it to the end.
         chunk_blobs = chunk_blobs[1:] + chunk_blobs[0:1]
         blob.compose(chunk_blobs, if_generation_match=0)
-        # Clean up the no-longer needed chunk blobs
-        for chunk in self._list_chunks(path):
-            chunk.delete()
+        # Clean up the no-longer needed chunk blobs, reusing the list
+        # already fetched instead of listing again.
+        self.bucket.delete_blobs(chunk_blobs)
         return blob
 
     def _list_blobs(self, path):
