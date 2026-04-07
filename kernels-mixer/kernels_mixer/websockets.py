@@ -82,11 +82,17 @@ class StartingReportingWebsocketConnection(GatewayWebSocketConnection):
         return await super().connect()
 
     def is_starting_message(self, incoming_msg):
+        # Pre-filter: skip full JSON parse for messages that can't contain
+        # "starting" status. This avoids parsing large output messages
+        # (e.g., dataframes, images) on the event loop.
+        msg_bytes = incoming_msg if isinstance(incoming_msg, bytes) else incoming_msg.encode("utf-8", errors="ignore")
+        if b'"starting"' not in msg_bytes:
+            return False
         try:
             msg = json_decode(utf8(incoming_msg))
             if msg.get("content", {}).get("execution_state", "") == "starting":
                 return True
-        except Exception as ex:
+        except Exception:
             pass
         return False
 
