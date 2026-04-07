@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+
 from jupyter_client.kernelspec import KernelSpecManager
 from jupyter_core.utils import ensure_async
 from jupyter_server.gateway.managers import GatewayKernelSpecManager
@@ -94,13 +96,24 @@ class MixingKernelSpecManager(KernelSpecManager):
         Returns:
           A map from kernel names (str) to kernelspecs.
         """
-        ks = self.local_manager.get_all_specs()
+        local_future = ensure_async(self.local_manager.get_all_specs())
+        remote_future = ensure_async(self.remote_manager.get_all_specs())
+
+        ks, remote_result = await asyncio.gather(
+            local_future, remote_future, return_exceptions=True
+        )
+
+        if isinstance(ks, BaseException):
+            raise ks
+
         for name, kernelspec in ks.items():
             spec = kernelspec.get("spec", {})
             append_display_name(spec, self.local_display_name_suffix)
             self._local_kernels = self._local_kernels | {name}
         try:
-            remote_ks = await ensure_async(self.remote_manager.get_all_specs())
+            if isinstance(remote_result, BaseException):
+                raise remote_result
+            remote_ks = remote_result
             for name, kernelspec in remote_ks.items():
                 if name not in self._local_kernels:
                     spec = kernelspec.get("spec", {})
