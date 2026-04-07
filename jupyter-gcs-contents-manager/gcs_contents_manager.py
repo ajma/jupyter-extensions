@@ -95,6 +95,7 @@ class GCSBasedFileManager:
         self.bucket_name = bucket_name
         self.bucket_path_prefix = bucket_path_prefix
         self._cached_bucket = None
+        self._bucket_exists = None
 
     @property
     def bucket(self):
@@ -157,7 +158,9 @@ class GCSBasedFileManager:
     def dir_exists(self, path):
         path = normalize_path(path)
         if not path:
-            return self.bucket.exists()
+            if self._bucket_exists is None:
+                self._bucket_exists = self.bucket.exists()
+            return self._bucket_exists
         if self._blob(path):
             # There is a regular file matching the specified directory.
             #
@@ -335,6 +338,11 @@ class GCSCheckpointManager(AsyncGenericCheckpointsMixin, AsyncCheckpoints):
         self._file_manager = GCSBasedFileManager(
             self._parent.project, self._parent.bucket_name, ""
         )
+        # Reuse the parent's storage client to avoid creating a duplicate.
+        if self._parent._file_manager._cached_bucket:
+            self._file_manager._cached_bucket = (
+                self._parent._file_manager._cached_bucket
+            )
         self._executor = _executor_
 
     def checkpoint_path(self, checkpoint_id, path):
@@ -550,7 +558,7 @@ class GCSContentsManager(AsyncContentsManager):
             contents = model["content"]
             if model["type"] == "notebook":
                 nb = nbformat.from_dict(contents)
-                await loop.run_in_executor(
+                created_model = await loop.run_in_executor(
                     self._executor, self._file_manager.create_notebook, nb, path
                 )
             elif model["type"] == "file":
@@ -570,7 +578,7 @@ class GCSContentsManager(AsyncContentsManager):
             # Follow the upstream pattern of only running the post-save hooks for the last chunk
             # (or for non-chunked uploads).
             self.run_post_save_hooks(model=model, os_path=path)
-            return await self.get(path, type=model["type"], content=False)
+            return created_model
         except HTTPError as err:
             raise err
         except Exception as ex:
@@ -735,17 +743,17 @@ class CombinedContentsManager(AsyncContentsManager):
                 500, "Internal server error: [{}] {}".format(type(ex), str(ex))
             )
 
-    async def _make_model_relative(self, model, path_prefix):
+    def _make_model_relative(self, model, path_prefix):
         if "path" in model:
             model["path"] = "{}/{}".format(path_prefix, model["path"])
         if model.get("type", None) == "directory":
-            await self._make_children_relative(model, path_prefix)
+            self._make_children_relative(model, path_prefix)
 
-    async def _make_children_relative(self, model, path_prefix):
+    def _make_children_relative(self, model, path_prefix):
         children = model.get("content", None)
         if children:
             for child in children:
-                await self._make_model_relative(child, path_prefix)
+                self._make_model_relative(child, path_prefix)
 
     async def get(self, path, content=True, type=None, format=None, **kwargs):
         if path in ["", "/"]:
@@ -780,7 +788,7 @@ class CombinedContentsManager(AsyncContentsManager):
                 relative_path, content=content, type=type, format=format, **kwargs
             )
             if model:
-                await self._make_model_relative(model, path_prefix)
+                self._make_model_relative(model, path_prefix)
             return model
         except HTTPError as err:
             raise err

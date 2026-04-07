@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-
 from jupyter_client.kernelspec import KernelSpecManager
 from jupyter_client.manager import in_pending_state
 from jupyter_core.utils import ensure_async, run_sync
@@ -168,6 +166,5 @@ class MixingKernelManager(ServerKernelManager):
     async def model(self):
         delegate_model = await ensure_async(
             self.delegate_multi_kernel_manager.kernel_model(self.delegate_kernel_id))
-        model = copy.deepcopy(delegate_model)
-        model["id"] = self.kernel_id
+        model = {**delegate_model, "id": self.kernel_id}
         return model

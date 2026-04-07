@@ -98,7 +98,7 @@ class MixingKernelSpecManager(KernelSpecManager):
         for name, kernelspec in ks.items():
             spec = kernelspec.get("spec", {})
             append_display_name(spec, self.local_display_name_suffix)
-            self._local_kernels = self._local_kernels | {name}
+            self._local_kernels.add(name)
         try:
             remote_ks = await ensure_async(self.remote_manager.get_all_specs())
             for name, kernelspec in remote_ks.items():
@@ -106,7 +106,7 @@ class MixingKernelSpecManager(KernelSpecManager):
                     spec = kernelspec.get("spec", {})
                     append_display_name(spec, self.remote_display_name_suffix)
                     ks[name] = kernelspec
-                    self._remote_kernels = self._remote_kernels | {name}
+                    self._remote_kernels.add(name)
                     
         except Exception as ex:
             self.log.exception('Failure listing remote kernelspecs: %s', ex)

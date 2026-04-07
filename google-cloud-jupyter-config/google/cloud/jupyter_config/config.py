@@ -19,7 +19,6 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
 import threading
 
 import cachetools
@@ -40,18 +39,15 @@ def run_gcloud_subcommand(subcmd):
     We reuse the system stderr for the command so that any prompts from gcloud
     will be displayed to the user.
     """
-    with tempfile.TemporaryFile() as t:
-        p = subprocess.run(
-            f"gcloud {subcmd}",
-            stdin=subprocess.DEVNULL,
-            stderr=sys.stderr,
-            stdout=t,
-            check=True,
-            encoding="UTF-8",
-            shell=True,
-        )
-        t.seek(0)
-        return t.read().decode("UTF-8").strip()
+    p = subprocess.run(
+        f"gcloud {subcmd}",
+        stdin=subprocess.DEVNULL,
+        stderr=sys.stderr,
+        stdout=subprocess.PIPE,
+        check=True,
+        shell=True,
+    )
+    return p.stdout.decode("UTF-8").strip()
 
 
 async def _run_gcloud_subcommand_via_process_pool_executor(subcmd):
@@ -85,22 +81,20 @@ async def async_run_gcloud_subcommand(subcmd):
     if sys.platform.startswith("win"):
         return await _run_gcloud_subcommand_via_process_pool_executor(subcmd)
 
-    with tempfile.TemporaryFile() as t:
-        p = await asyncio.create_subprocess_shell(
-            f"gcloud {subcmd}",
-            stdin=subprocess.DEVNULL,
-            stderr=sys.stderr,
-            stdout=t,
-        )
-        await p.wait()
-        if p.returncode != 0:
-            raise subprocess.CalledProcessError(p.returncode, None, None, None)
-        t.seek(0)
-        return t.read().decode("UTF-8").strip()
+    p = await asyncio.create_subprocess_shell(
+        f"gcloud {subcmd}",
+        stdin=subprocess.DEVNULL,
+        stderr=sys.stderr,
+        stdout=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await p.communicate()
+    if p.returncode != 0:
+        raise subprocess.CalledProcessError(p.returncode, None, None, None)
+    return stdout.decode("UTF-8").strip()
 
 
 @cachetools.cached(
-    cache=cachetools.TTLCache(maxsize=1024, ttl=(20 * 60)), lock=threading.Lock()
+    cache=cachetools.TTLCache(maxsize=4, ttl=(20 * 60)), lock=threading.Lock()
 )
 def cached_gcloud_subcommand(subcmd):
     return run_gcloud_subcommand(subcmd)

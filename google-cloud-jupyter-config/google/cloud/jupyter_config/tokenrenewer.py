@@ -15,7 +15,6 @@
 import datetime
 import subprocess
 import sys
-import tempfile
 import typing
 
 
@@ -80,15 +79,12 @@ class CommandTokenRenewer(CachedTokenRenewerBase):
         We reuse the system stderr for the command so that any prompts from it
         will be displayed to the user.
         """
-        with tempfile.TemporaryFile() as t:
-            p = subprocess.run(
-                self.token_command,
-                stdin=subprocess.DEVNULL,
-                stderr=sys.stderr,
-                stdout=t,
-                check=True,
-                shell=True,
-                encoding="UTF-8",
-            )
-            t.seek(0)
-            return t.read().decode("UTF-8").strip()
+        p = subprocess.run(
+            self.token_command,
+            stdin=subprocess.DEVNULL,
+            stderr=sys.stderr,
+            stdout=subprocess.PIPE,
+            check=True,
+            shell=True,
+        )
+        return p.stdout.decode("UTF-8").strip()
