@@ -197,7 +197,7 @@ def gcp_project():
 def gcp_project_number():
     """Helper method to get the project number for the project configured through gcloud"""
     project = gcp_project()
-    return run_gcloud_subcommand(
+    return cached_gcloud_subcommand(
         f'projects describe {project} --format="value(projectNumber)"'
     )
 
