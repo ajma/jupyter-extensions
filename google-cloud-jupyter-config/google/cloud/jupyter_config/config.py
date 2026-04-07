@@ -281,8 +281,10 @@ class PropertiesHandler(APIHandler):
 
         try:
             updated_properties_list = flatten_dictionary("", updated_properties)
-            for k, v in updated_properties_list:
-                await async_run_gcloud_subcommand(f"config set {k} {v}")
+            await asyncio.gather(*(
+                async_run_gcloud_subcommand(f"config set {k} {v}")
+                for k, v in updated_properties_list
+            ))
             clear_gcloud_cache()
             self.finish(json.dumps(updated_properties_list))
         except ValueError as ve:
